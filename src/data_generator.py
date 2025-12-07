@@ -70,7 +70,6 @@ def generate_data(num_rows=1000):
     }
     
     # Adjust TotalClaims to be 0 if it was selected as 0 (the choice above returns a single float if not careful, but here it broadcasts? No, wait.)
-    # Let's fix TotalClaims generation
     claims = []
     for _ in range(num_rows):
         if random.random() < 0.2:
