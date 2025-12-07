@@ -3,9 +3,10 @@ import numpy as np
 import random
 from datetime import datetime, timedelta
 
+
 def generate_data(num_rows=1000):
     np.random.seed(42)
-    
+
     # Helper to generate dates
     def random_date(start, end):
         return start + timedelta(
@@ -66,11 +67,10 @@ def generate_data(num_rows=1000):
         'StatutoryClass': ['Class A'] * num_rows,
         'StatutoryRiskType': ['Risk A'] * num_rows,
         'TotalPremium': np.random.uniform(500, 3500, num_rows),
-        'TotalClaims': np.random.choice([0, np.random.uniform(1000, 50000)], num_rows, p=[0.8, 0.2]) # 20% claim rate
+        'TotalClaims': np.random.choice([0, np.random.uniform(1000, 50000)], num_rows, p=[0.8, 0.2])  # 20% claim rate
     }
-    
-    # Adjust TotalClaims to be 0 if it was selected as 0 (the choice above returns a single float if not careful, but here it broadcasts? No, wait.)
-    # Let's fix TotalClaims generation
+
+    # Adjust TotalClaims to be 0 if it was selected as 0
     claims = []
     for _ in range(num_rows):
         if random.random() < 0.2:
@@ -82,6 +82,7 @@ def generate_data(num_rows=1000):
     df = pd.DataFrame(data)
     df.to_csv('data/insurance_claims.csv', index=False)
     print("Data generated successfully at data/insurance_claims.csv")
+
 
 if __name__ == "__main__":
     generate_data()
