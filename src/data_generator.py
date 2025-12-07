@@ -71,6 +71,7 @@ def generate_data(num_rows=1000):
     }
 
     # Adjust TotalClaims to be 0 if it was selected as 0
+    # This ensures that 80% of the entries have 0 claims
     claims = []
     for _ in range(num_rows):
         if random.random() < 0.2:
