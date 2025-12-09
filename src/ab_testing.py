@@ -1,79 +1,96 @@
 import pandas as pd
-import numpy as np
 from scipy import stats
-import matplotlib.pyplot as plt
-import seaborn as sns
+import logging
+import os
 
-def ab_testing(file_path):
-    df = pd.read_csv(file_path)
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def perform_ab_testing(file_path: str):
+    """
+    Perform A/B testing (Hypothesis Testing) on the insurance claims dataset.
     
-    # Feature Engineering
-    df['HasClaim'] = df['TotalClaims'] > 0
-    df['Margin'] = df['TotalPremium'] - df['TotalClaims']
+    Args:
+        file_path (str): Path to the CSV file containing the data.
+    """
+    if not os.path.exists(file_path):
+        logging.error(f"File not found: {file_path}")
+        return
+
+    try:
+        df = pd.read_csv(file_path)
+        logging.info(f"Successfully loaded data from {file_path}")
+    except Exception as e:
+        logging.error(f"Failed to load data: {e}")
+        return
+
+    # Test 1: Risk Differences across Provinces (ANOVA)
+    # Null Hypothesis: There is no significant difference in TotalClaims across Provinces.
+    try:
+        provinces = df['Province'].unique()
+        groups = [df[df['Province'] == p]['TotalClaims'] for p in provinces]
+        f_stat, p_value = stats.f_oneway(*groups)
+        
+        logging.info(f"ANOVA Test for TotalClaims across Provinces: F-stat={f_stat:.4f}, p-value={p_value:.4f}")
+        
+        if p_value < 0.05:
+            logging.info("Result: Reject Null Hypothesis. Significant difference in claims across provinces.")
+            recommend_province_strategy(df)
+        else:
+            logging.info("Result: Fail to Reject Null Hypothesis. No significant difference in claims across provinces.")
+            
+    except Exception as e:
+        logging.error(f"Error performing ANOVA test: {e}")
+
+    # Test 2: Risk Differences between Gender (T-test)
+    # Null Hypothesis: There is no significant difference in TotalClaims between Male and Female.
+    try:
+        male_claims = df[df['Gender'] == 'Male']['TotalClaims']
+        female_claims = df[df['Gender'] == 'Female']['TotalClaims']
+        
+        t_stat, p_value = stats.ttest_ind(male_claims, female_claims, equal_var=False)
+        
+        logging.info(f"T-test for TotalClaims between Gender: T-stat={t_stat:.4f}, p-value={p_value:.4f}")
+        
+        if p_value < 0.05:
+            logging.info("Result: Reject Null Hypothesis. Significant difference in claims between genders.")
+            recommend_gender_strategy(df)
+        else:
+            logging.info("Result: Fail to Reject Null Hypothesis. No significant difference in claims between genders.")
+            
+    except Exception as e:
+        logging.error(f"Error performing T-test: {e}")
+
+
+def recommend_province_strategy(df: pd.DataFrame):
+    """
+    Generate business recommendations based on Province risk analysis.
+    """
+    avg_claims = df.groupby('Province')['TotalClaims'].mean().sort_values(ascending=False)
+    high_risk = avg_claims.head(1).index[0]
+    low_risk = avg_claims.tail(1).index[0]
     
-    results = []
+    logging.info("--- Business Recommendation (Province) ---")
+    logging.info(f"High Risk Province: {high_risk} (Avg Claim: {avg_claims[high_risk]:.2f})")
+    logging.info(f"Action: Consider increasing premiums or stricter underwriting in {high_risk}.")
+    logging.info(f"Low Risk Province: {low_risk} (Avg Claim: {avg_claims[low_risk]:.2f})")
+    logging.info(f"Action: Target marketing campaigns in {low_risk} to acquire low-risk customers.")
+
+
+def recommend_gender_strategy(df: pd.DataFrame):
+    """
+    Generate business recommendations based on Gender risk analysis.
+    """
+    avg_claims = df.groupby('Gender')['TotalClaims'].mean()
+    logging.info("--- Business Recommendation (Gender) ---")
+    logging.info(f"Average Claims by Gender:\n{avg_claims}")
     
-    # 1. Risk differences across provinces (Chi-squared on HasClaim)
-    # H0: No difference in claim frequency across provinces
-    contingency_table = pd.crosstab(df['Province'], df['HasClaim'])
-    chi2, p, dof, expected = stats.chi2_contingency(contingency_table)
-    results.append(f"Hypothesis 1: Risk differences across provinces (Claim Frequency)")
-    results.append(f"Chi2: {chi2}, p-value: {p}")
-    if p < 0.05:
-        results.append("Result: Reject Null Hypothesis (Significant difference)")
+    if avg_claims['Male'] > avg_claims['Female']:
+        logging.info("Action: Males have higher average claims. Review pricing models for male drivers.")
     else:
-        results.append("Result: Fail to Reject Null Hypothesis (No significant difference)")
-    results.append("-" * 30)
+        logging.info("Action: Females have higher average claims. Review pricing models for female drivers.")
 
-    # 2. Risk differences between zipcodes (PostalCode)
-    # Since there are many zipcodes, we might group them or just test top ones?
-    # Or use ANOVA if we treat risk as continuous (TotalClaims)?
-    # Let's use ANOVA on TotalClaims for ZipCodes
-    # H0: No difference in TotalClaims mean across ZipCodes
-    # We'll filter for top 10 zipcodes to make it manageable or just run it
-    top_zips = df['PostalCode'].value_counts().head(20).index
-    df_top_zips = df[df['PostalCode'].isin(top_zips)]
-    groups = [group['TotalClaims'].values for name, group in df_top_zips.groupby('PostalCode')]
-    f_val, p_val = stats.f_oneway(*groups)
-    results.append(f"Hypothesis 2: Risk differences between zipcodes (TotalClaims ANOVA)")
-    results.append(f"F-stat: {f_val}, p-value: {p_val}")
-    if p_val < 0.05:
-        results.append("Result: Reject Null Hypothesis")
-    else:
-        results.append("Result: Fail to Reject Null Hypothesis")
-    results.append("-" * 30)
-
-    # 3. Margin difference between zipcodes
-    # H0: No difference in Margin mean across ZipCodes
-    groups_margin = [group['Margin'].values for name, group in df_top_zips.groupby('PostalCode')]
-    f_val_m, p_val_m = stats.f_oneway(*groups_margin)
-    results.append(f"Hypothesis 3: Margin differences between zipcodes (ANOVA)")
-    results.append(f"F-stat: {f_val_m}, p-value: {p_val_m}")
-    if p_val_m < 0.05:
-        results.append("Result: Reject Null Hypothesis")
-    else:
-        results.append("Result: Fail to Reject Null Hypothesis")
-    results.append("-" * 30)
-
-    # 4. Risk difference between Women and Men
-    # T-test on TotalClaims
-    # H0: No difference in TotalClaims between Men and Women
-    group_male = df[df['Gender'] == 'Male']['TotalClaims']
-    group_female = df[df['Gender'] == 'Female']['TotalClaims']
-    t_stat, p_val_g = stats.ttest_ind(group_male, group_female, equal_var=False)
-    results.append(f"Hypothesis 4: Risk differences between Women and Men (T-test on TotalClaims)")
-    results.append(f"T-stat: {t_stat}, p-value: {p_val_g}")
-    if p_val_g < 0.05:
-        results.append("Result: Reject Null Hypothesis")
-    else:
-        results.append("Result: Fail to Reject Null Hypothesis")
-    results.append("-" * 30)
-
-    # Save results
-    with open('notebooks/ab_test_results.txt', 'w') as f:
-        f.write("\n".join(results))
-    
-    print("\n".join(results))
 
 if __name__ == "__main__":
-    ab_testing('data/insurance_claims.csv')
+    perform_ab_testing('data/insurance_claims.csv')
